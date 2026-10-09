@@ -1,0 +1,56 @@
+services:
+  audio:
+    image: ${TIDAL_KIT_AUDIO_IMAGE:-localhost/tidalcycles-kit-audio:dev}
+    build:
+      context: .
+      dockerfile: runtime/Containerfile.audio
+    network_mode: host
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    # Used only to adopt the PipeWire socket owner, then dropped by the entrypoint.
+    cap_add:
+      - SETUID
+      - SETGID
+      - SETPCAP
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ${XDG_RUNTIME_DIR:?Run Compose from your Linux desktop session}/pipewire-0
+        target: /run/pipewire/pipewire-0
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/tidal-audio-ready && test -n \"$$(ss -H -lun 'sport = :57110')\" && test -n \"$$(ss -H -lun 'sport = :57120')\""]
+      interval: 5s
+      timeout: 2s
+      retries: 6
+      start_period: 30s
+    stop_grace_period: 10s
+  tidal:
+    image: ${TIDAL_KIT_IMAGE:-localhost/tidalcycles-kit:dev}
+    init: true
+    build:
+      context: .
+      dockerfile: runtime/Containerfile
+    network_mode: host
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "65534:65534"
+    environment:
+      HOME: /tmp
+    volumes:
+      - ./runtime:/opt/kit/boot:ro
+      - ${TIDAL_WORKSPACE:-.}:/workspace:ro
+    working_dir: /workspace
+    command: ["sleep", "infinity"]

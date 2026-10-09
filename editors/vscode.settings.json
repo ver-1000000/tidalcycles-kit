@@ -1,0 +1,6 @@
+{
+  "tidalcycles.ghciPath": "/absolute/path/to/tidalcycles-kit/bin/ghci",
+  "tidalcycles.bootTidalPath": "/absolute/path/to/tidalcycles-kit/runtime/BootTidal.hs",
+  "tidalcycles.useStackGhci": false,
+  "files.associations": {"*.tidal": "haskell"}
+}

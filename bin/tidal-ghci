@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Adapt editor GHCi arguments to a disposable Compose session.
+set -euo pipefail
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+die() { printf 'tidalcycles-kit: %s\n' "$*" >&2; exit 1; }
+runtime() {
+    ENGINE=${TIDAL_KIT_ENGINE:-}
+    if [[ -z $ENGINE ]]; then
+        if command -v podman >/dev/null; then ENGINE=podman; else ENGINE=docker; fi
+    fi
+    command -v "$ENGINE" >/dev/null || die 'Install Podman or Docker first.'
+}
+absolute_file() {
+    [[ -f $1 ]] || die "File does not exist: $1"
+    REPLY=$(cd -- "$(dirname -- "$1")" && printf '%s/%s' "$PWD" "$(basename -- "$1")")
+}
+ghci() {
+    local mode=$1 host port workspace boot='' query=false arg
+    shift
+    runtime
+    workspace=$(pwd -P)
+    [[ $workspace != / && $workspace != "$(cd "$HOME" && pwd -P)" ]] || die 'Open a song/project directory, not your home or filesystem root.'
+    [[ $workspace != *[:,]* && $workspace != *$'\n'* ]] || die 'Workspace paths containing colons, commas or newlines are unsupported.'
+    export TIDAL_WORKSPACE=$workspace
+    export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+    CMD=("$ENGINE" compose -f "$ROOT/compose.yaml" run --rm --no-deps)
+    if [[ ! -t 0 || ! -t 1 ]]; then CMD+=(-T); fi
+    host=${TIDAL_DIRT_HOST:-127.0.0.1}
+    port=${TIDAL_CONTROL_PORT:-6010}
+    [[ $port =~ ^[0-9]{1,5}$ ]] && ((10#$port <= 65535)) || die 'TIDAL_CONTROL_PORT must be 0..65535.'
+    CMD+=(-e "TIDAL_DIRT_HOST=$host" -e "TIDAL_CONTROL_PORT=$((10#$port))")
+    local extra=()
+    while (($#)); do
+        arg=$1; shift
+        case $arg in
+            -ghci-script|-ghci-script=*)
+                [[ -z $boot ]] || die 'Only one explicit boot file is supported.'
+                if [[ $arg == -ghci-script ]]; then
+                    (($#)) || die '-ghci-script requires a file path.'
+                    boot=$1; shift
+                else boot=${arg#*=}; fi
+                [[ $boot != /opt/kit/boot/BootTidal.hs ]] || boot=$ROOT/runtime/BootTidal.hs
+                absolute_file "$boot"
+                [[ $REPLY != *[:,]* && $REPLY != *$'\n'* ]] || die 'Boot paths containing colons, commas or newlines are unsupported.'
+                CMD+=(-v "$REPLY:/opt/kit/selected-boot.hs:ro")
+                extra+=(-ghci-script /opt/kit/selected-boot.hs);;
+            -e) query=true; extra+=("$arg");;
+            *) extra+=("$arg");;
+        esac
+    done
+    if [[ -z $boot && $query == false && $mode == ghci ]]; then
+        extra+=(-ghci-script /opt/kit/boot/BootTidal.hs)
+    fi
+    exec "${CMD[@]}" --entrypoint ghci tidal -ignore-dot-ghci -v0 "${extra[@]}"
+}
+[[ $(uname -s) == Linux ]] || die 'This launcher requires Linux.'
+mode=ghci
+[[ ${TIDAL_KIT_RAW:-0} != 1 ]] || mode=raw-ghci
+ghci "$mode" "$@"

@@ -1,0 +1,40 @@
+name: Test
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          for script in bin/tidal-ghci tests/*.sh tests/fixtures/runtime; do bash -n "$script"; done
+          sh -n bin/ghci runtime/audio-entrypoint
+          bash tests/test.sh
+      - run: git diff --check
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    env:
+      TIDAL_KIT_ENGINE: docker
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t localhost/tidalcycles-kit:dev -f runtime/Containerfile .
+      - run: docker build -t localhost/tidalcycles-kit-audio:dev -f runtime/Containerfile.audio .
+      - run: bash tests/smoke-osc.sh
+      - run: bash tests/smoke-osc.sh --raw-boot

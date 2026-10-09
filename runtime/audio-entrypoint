@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+test -S "$PIPEWIRE_RUNTIME_DIR/pipewire-0" || { echo 'PipeWire socket is missing; start from your desktop session.' >&2; exit 1; }
+# Rootless engines map the desktop user to container root; rootful engines
+# expose the host UID. Read the ownership inside this namespace in either case.
+audio_uid=$(stat -c %u "$PIPEWIRE_RUNTIME_DIR/pipewire-0")
+audio_gid=$(stat -c %g "$PIPEWIRE_RUNTIME_DIR/pipewire-0")
+test "$audio_uid" != 65534 || { echo 'PipeWire socket owner is unmapped; check the container user namespace.' >&2; exit 1; }
+exec setpriv --reuid="$audio_uid" --regid="$audio_gid" --clear-groups \
+    --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+    tini -- sh -eu -c '
+for port in 57110 57120; do
+    test -z "$(ss -H -lun "sport = :$port")" || { echo "UDP $port is occupied; stop the existing audio session first." >&2; exit 1; }
+done
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+exec "$@"
+' audio-session "$@"

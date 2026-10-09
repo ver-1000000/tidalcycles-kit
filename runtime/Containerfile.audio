@@ -1,0 +1,26 @@
+FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+RUN mkdir -p /opt/quarks
+RUN git init /opt/quarks/SuperDirt \
+    && git -C /opt/quarks/SuperDirt fetch --depth=1 https://codeberg.org/musikinformatik/SuperDirt.git c7f32998572984705d340e7c1b9ed9ad998a39b6 \
+    && git -C /opt/quarks/SuperDirt checkout --detach FETCH_HEAD
+RUN git init /opt/quarks/Vowel \
+    && git -C /opt/quarks/Vowel fetch --depth=1 https://github.com/supercollider-quarks/Vowel.git ab59caa870201ecf2604b3efdd2196e21a8b5446 \
+    && git -C /opt/quarks/Vowel checkout --detach FETCH_HEAD
+RUN git init /opt/quarks/Dirt-Samples \
+    && git -C /opt/quarks/Dirt-Samples fetch --depth=1 https://github.com/tidalcycles/Dirt-Samples.git c74fc80f8db8038f6a33648ffef5ac00a07ad402 \
+    && git -C /opt/quarks/Dirt-Samples checkout --detach FETCH_HEAD
+RUN rm -r /opt/quarks/SuperDirt/.git /opt/quarks/Vowel/.git /opt/quarks/Dirt-Samples/.git
+
+FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    supercollider-language supercollider-server sc3-plugins-language sc3-plugins-server \
+    pipewire-jack iproute2 util-linux tini \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=dependencies /opt/quarks /opt/quarks
+COPY runtime/BootSuperDirt.scd runtime/sclang.yaml /opt/kit/boot/
+COPY runtime/audio-entrypoint /usr/local/bin/audio-entrypoint
+ENV HOME=/tmp XDG_RUNTIME_DIR=/tmp/runtime PIPEWIRE_RUNTIME_DIR=/run/pipewire \
+    QT_QPA_PLATFORM=offscreen QTWEBENGINE_DISABLE_SANDBOX=1 TIDAL_KIT_SAMPLES=/opt/quarks/Dirt-Samples/*
+ENTRYPOINT ["/usr/local/bin/audio-entrypoint"]
+CMD ["pw-jack", "sclang", "-a", "-l", "/opt/kit/boot/sclang.yaml", "-D", "/opt/kit/boot/BootSuperDirt.scd"]

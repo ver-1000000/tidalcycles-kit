@@ -1,0 +1,33 @@
+FROM docker.io/library/haskell:9.6.7-slim@sha256:3abe1175a5466fe760ed90937b32b42be340281b6707dace6d5addea2148d05e AS build
+
+ARG TIDAL_VERSION=1.10.3
+ARG HACKAGE_INDEX_STATE=2026-10-05T00:00:00Z
+RUN cabal update && cabal install --lib tidal-${TIDAL_VERSION} \
+    --index-state=${HACKAGE_INDEX_STATE} --jobs=2 --package-env=/opt/tidal.env \
+    && mkdir -p /opt/tidal/sources \
+    && find /root/.cache/cabal/packages -name '*.tar.gz' ! -name '01-index.tar.gz' -exec cp {} /opt/tidal/sources/ \; \
+    && rm -r /root/.cache/cabal \
+    && chmod -R a+rX /root/.local /opt/tidal /opt/tidal.env && chmod a+rx /root
+
+# Keep the compressed upstream documentation (including notices), not its
+# expanded HTML/PDF copies. Interactive evaluation does not use profiling ways.
+RUN rm -r /opt/ghc/9.6.7/share/doc/ghc-9.6.7/html \
+    /opt/ghc/9.6.7/share/doc/ghc-9.6.7/users_guide \
+    /opt/ghc/9.6.7/share/doc/ghc-9.6.7/Haddock.pdf \
+    /opt/ghc/9.6.7/share/doc/ghc-9.6.7/users_guide.pdf \
+    && find /opt/ghc/9.6.7 -type f \( -name '*_p.a' -o -name '*.p_hi' \) -delete
+
+# GHCi still needs a compiler and linker for user modules and native code,
+# but not Cabal or Stack at runtime. Share the audio image's Debian base.
+FROM docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    g++ libgmp-dev libtinfo6 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /opt/ghc /opt/ghc
+COPY --from=build /opt/tidal /opt/tidal
+COPY --from=build /opt/tidal.env /opt/tidal.env
+COPY --from=build /root/.local /root/.local
+RUN chmod a+rx /root
+ENV PATH=/opt/ghc/9.6.7/bin:$PATH LANG=C.UTF-8 GHC_ENVIRONMENT=/opt/tidal.env
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

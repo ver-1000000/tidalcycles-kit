@@ -1,0 +1,4 @@
+#!/bin/sh
+# VS Code sends its configured boot file through stdin itself.
+export TIDAL_KIT_RAW=1
+exec "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/tidal-ghci" "$@"

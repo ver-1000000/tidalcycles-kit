@@ -1,0 +1,8 @@
+services:
+  audio:
+    volumes:
+      - ./tests:/tests:ro
+    environment:
+      KIT_TEST_ROOT: /opt/kit
+      KIT_TEST_RECORDING: /tmp/output.wav
+    command: ["pw-jack", "sclang", "-a", "-l", "/opt/kit/boot/sclang.yaml", "-D", "/tests/audio-probe.scd"]

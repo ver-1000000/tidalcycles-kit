@@ -1,0 +1,6 @@
+includePaths:
+  - /usr/share/SuperCollider/SCClassLibrary
+  - /usr/share/SuperCollider/Extensions
+  - /opt/quarks/SuperDirt
+  - /opt/quarks/Vowel
+excludeDefaultPaths: true
